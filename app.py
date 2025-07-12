@@ -122,14 +122,15 @@ Rewrite the user-provided passage **so that a student at reading grade level
 
 GENERAL RULES
 1. Maintain original sequence and formatting.
-2. Adjust vocabulary, sentence length, and complexity according to the grade.
-3. Apply special-education accommodations:
+2. KEEP EVERYTHING IN SENTENCE/PARAGRAPH FORMAT
+3. Adjust vocabulary, sentence length, and complexity according to the grade.
+4. Apply special-education accommodations:
    • Break long sentences into shorter ones.  
    • Chunk information with bullets or numbered lists.  
    • Avoid unexplained idioms or jargon.  
    • Provide brief definitions or synonyms in context.  
    • Keep paragraphs short and focused.  
-4. Age-appropriate tone: simple language but never childish for older students.
+5. Age-appropriate tone: simple language but never childish for older students.
 
 GRADE-LEVEL ADAPTATION GUIDELINES
 ---------------------------------
