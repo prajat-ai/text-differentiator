@@ -49,8 +49,7 @@ Rewrite the user-provided passage **so that a student at reading grade level {gr
 
 RULES
 1. **Preserve the original structure and formatting** \
-   • Keep headings, paragraphs, blank lines, bullet or numbered lists \
-   • Keep inline formatting such as **bold** or *italics* if present \
+   • Return the same paragraph format.
    • Maintain the same sequence of ideas
 2. Adjust vocabulary, sentence length, and complexity to match grade-level guidelines below.
 3. Apply special-education accommodations (shorter sentences, chunking, definitions in-context, no unexplained idioms).
