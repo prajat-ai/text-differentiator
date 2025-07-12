@@ -1,43 +1,79 @@
+import os
 import streamlit as st
-import openai
+from openai import OpenAI, OpenAIError
 
-# Use the OpenAI API key from Streamlit secrets
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# -------------  Configuration -------------
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    st.error("OPENAI_API_KEY not found. "
+             "Set it in your environment or Streamlit secrets.", icon="🚫")
+    st.stop()
 
-st.set_page_config(page_title="Text Differentiator", layout="centered")
-st.title("📚 Text Differentiator")
-st.markdown("Help students by simplifying text to a chosen reading level.")
+client = OpenAI(api_key=OPENAI_API_KEY)
 
-grade_level = st.sidebar.selectbox(
-    "Select Grade Level:",
-    ["Kindergarten", "1st Grade", "2nd Grade", "3rd Grade", "4th Grade", "5th Grade", 
-     "6th Grade", "7th Grade", "8th Grade", "High School"]
+# -------------  UI -------------
+st.set_page_config(page_title="Text Differentiator",
+                   page_icon="📚", layout="wide")
+
+st.title("📚 Text Differentiator for Special‑Education Teachers")
+
+with st.sidebar:
+    st.header("Settings")
+    grades = [f"{g}" for g in range(1, 13)]  # 1‑12
+    grades.insert(0, "K")                    # Kindergarten
+    target_grade = st.selectbox("Target grade level", grades, index=0)
+    temperature = st.slider("Creativity (temperature)", 0.0, 1.0, 0.3, 0.05)
+    model = st.selectbox("Model", ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"], index=0)
+    st.markdown("---")
+    st.caption("Your key never leaves Streamlit’s secure back‑end.")
+
+input_text = st.text_area(
+    "Paste the passage you want adapted:",
+    height=300,
+    placeholder="Enter or paste any text here…"
 )
 
-input_text = st.text_area("Enter the original text you'd like to simplify:", height=200)
+submit = st.button("🔄 Adapt Text", type="primary")
 
-if st.button("Simplify Text"):
+# -------------  Back‑end call -------------
+def adapt_text(text: str, grade: str) -> str:
+    """Call OpenAI to rewrite `text` for grade level `grade`."""
+    system_prompt = (
+        "You are an educational content specialist. "
+        f"Rewrite the user‑provided passage so that a student at reading "
+        f"grade level {grade} can easily understand it. "
+        "Keep the original meaning but adjust vocabulary and syntax. "
+        "Respond with *only* the adapted passage—no extra commentary."
+    )
+    response = client.chat.completions.create(
+        model=model,
+        temperature=temperature,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text}
+        ],
+    )
+    return response.choices[0].message.content.strip()
+
+# -------------  Main action -------------
+if submit:
     if not input_text.strip():
-        st.warning("Please enter some text.")
-    else:
-        with st.spinner("Simplifying text..."):
-            prompt = (
-                f"Rewrite the following text so it is understandable by a {grade_level} student. "
-                f"Keep the meaning but simplify the vocabulary and sentence structure:\n\n"
-                f"{input_text}"
-            )
-            try:
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant who rewrites complex text for students at different reading levels."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=800
-                )
-                simplified_text = response['choices'][0]['message']['content']
-                st.success("Here is the simplified version:")
-                st.text_area("Simplified Text", simplified_text, height=200)
-            except Exception as e:
-                st.error(f"Error: {e}")
+        st.warning("Please enter some text first.")
+        st.stop()
+
+    with st.spinner("Adapting text…"):
+        try:
+            adapted = adapt_text(input_text, target_grade)
+        except OpenAIError as e:
+            st.error(f"OpenAI error: {e}")
+            st.stop()
+
+    st.subheader("✅ Adapted Text")
+    st.write(adapted)
+
+    st.download_button(
+        label="💾 Download as .txt",
+        data=adapted,
+        file_name=f"adapted_grade_{target_grade}.txt",
+        mime="text/plain"
+    )
