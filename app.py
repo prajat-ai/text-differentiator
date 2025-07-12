@@ -19,7 +19,7 @@ st.title("📚 Text Differentiator for Special‑Education Teachers")
 
 with st.sidebar:
     st.header("Settings")
-    grades = [f"{g}" for g in range(1, 13)]  # 1‑12
+    grades = []  # 1‑12
     grades.insert(0, "Kindergarten")
     grades.insert(1, "1st Grade")
     grades.insert(2, "2nd Grade")
