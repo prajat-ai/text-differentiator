@@ -105,7 +105,7 @@ if submit:
     st.write(adapted)
 
     if generate_questions:
-    st.subheader("🧠 Comprehension Questions")
+        st.subheader("🧠 Comprehension Questions")
     with st.spinner("Generating questions…"):
         questions = generate_comprehension_questions(adapted)
     st.markdown(questions)
