@@ -104,6 +104,12 @@ if submit:
     st.subheader("✅ Adapted Text")
     st.write(adapted)
 
+    if generate_questions:
+    st.subheader("🧠 Comprehension Questions")
+    with st.spinner("Generating questions…"):
+        questions = generate_comprehension_questions(adapted)
+    st.markdown(questions)
+
     st.download_button(
         label="💾 Download as .txt",
         data=adapted,
