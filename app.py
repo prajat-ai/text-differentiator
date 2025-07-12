@@ -33,7 +33,7 @@ LEXILE_LIMITS = {
 
 GRADE_DESCRIPTIONS = {
     "Kindergarten":
-        "Use very basic words and very short sentences focused on concrete, everyday concepts.",
+        "Use VERY VERY simple words. The level a kindergartener could understand. Lexile score SHOULD NOT exceed 220. Keep the main concepts in tact. Use short sentences.",
     "1st Grade":
         "Use simple sentences with common, easy words focused on daily activities.",
     "2nd Grade":
