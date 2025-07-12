@@ -20,11 +20,12 @@ st.title("📚 Text Differentiator for Special‑Education Teachers")
 with st.sidebar:
     st.header("Settings")
     grades = [f"{g}" for g in range(1, 13)]  # 1‑12
-    grades.insert(0, "K")                    # Kindergarten
+    grades.insert(0, "Kindergarten") 
+    grades.insert(1, "1st")
     target_grade = st.selectbox("Target grade level", grades, index=0)
     temperature = st.slider("Creativity (temperature)", 0.0, 1.0, 0.3, 0.05)
     model = st.selectbox("Model", ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"], index=0)
-    st.markdown("---")
+    st.mardown("---")
     st.caption("Your key never leaves Streamlit’s secure back‑end.")
 
 input_text = st.text_area(
