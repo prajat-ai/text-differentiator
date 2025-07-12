@@ -46,6 +46,7 @@ input_text = st.text_area(
 )
 
 submit = st.button("🔄 Adapt Text", type="primary")
+generate_questions = st.checkbox("🧠 Generate Comprehension Questions")
 
 # -------------  Back‑end call -------------
 def adapt_text(text: str, grade: str) -> str:
@@ -67,6 +68,26 @@ def adapt_text(text: str, grade: str) -> str:
     )
     return response.choices[0].message.content.strip()
 
+def generate_comprehension_questions(text: str) -> str:
+    """Generate 3–5 comprehension questions for the adapted passage."""
+    prompt = (
+        "Generate 3 to 5 comprehension questions based on the following adapted passage. "
+        "Include a mix of literal and inferential questions appropriate for a student at the target reading level. "
+        "Return only the list of questions, numbered."
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.5,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": text}
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    except OpenAIError as e:
+        return f"Error generating questions: {e}"
+
 # -------------  Main action -------------
 if submit:
     if not input_text.strip():
@@ -82,6 +103,12 @@ if submit:
 
     st.subheader("✅ Adapted Text")
     st.write(adapted)
+
+    if generate_questions:
+    st.subheader("🧠 Comprehension Questions")
+    with st.spinner("Generating questions…"):
+        questions = generate_comprehension_questions(adapted)
+    st.markdown(questions)
 
     st.download_button(
         label="💾 Download as .txt",
