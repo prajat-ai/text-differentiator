@@ -15,7 +15,7 @@ if not OPENAI_API_KEY:
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 st.set_page_config(
-    page_title="Text Differentiator Pro",
+    page_title="Welcome to ReadRight",
     layout="wide",
     initial_sidebar_state="expanded",
 )
