@@ -137,7 +137,7 @@ def history_pdf(records):
     w, h = letter
     y = h - 50
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, y, "Text Differentiator Pro — History")
+    c.drawString(50, y, "Welcome to ReadRight — History")
     y -= 30
     c.setFont("Helvetica", 11)
     for r in records:
@@ -161,7 +161,7 @@ def history_pdf(records):
 st.markdown(
     """
 <div style="text-align:center;padding:3rem 0 2rem 0;">
-  <h1 class="hero-title" style="margin:0;font-weight:700;">Text Differentiator Pro</h1>
+  <h1 class="hero-title" style="margin:0;font-weight:700;">Welcome to ReadRight</h1>
   <p class="hero-subtitle" style="margin:0;">Transform instructional materials into accessible texts for every learner.</p>
 </div>
 """,
