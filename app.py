@@ -184,7 +184,7 @@ with st.sidebar:
     tgt_grade = st.selectbox("Target grade level", GRADES, index=2)
 
     st.header("AI Settings")
-    model = st.selectbox("Model", ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"], index=0)
+    model = st.selectbox("Model", ["Powerful", "Balanced", "Fast"], index=0)
 
     st.header("Accessibility Options")
     simplify = st.checkbox("Simplify vocabulary", True)
