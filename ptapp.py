@@ -1,16 +1,25 @@
+# readright_app.py
+"""
+ReadRight – adaptive text differentiation for diverse learners.
+Revised 2025‑08‑06 per custom requirements.
+"""
+
 import os
 import re
 from io import BytesIO
 from datetime import datetime
-
+import json
 import streamlit as st
-from openai import OpenAI, OpenAIError   # noqa: F401  (kept for completeness)
+from openai import OpenAI
 
-# ─────────────────────────────────────────  CONFIG  ──────────────────────────────────────────
+# ─────────────────────────────  CONFIG  ──────────────────────────────
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     st.error("OPENAI_API_KEY not found. Set it in your environment or Streamlit secrets.")
     st.stop()
+
+# Default model; can be overridden with env var if needed
+MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -20,7 +29,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ──────────────────────────────────────────  CSS  ────────────────────────────────────────────
+# ─────────────────────────────  CSS  ──────────────────────────────
 st.markdown(
     """
 <style>
@@ -42,19 +51,20 @@ st.markdown(
 
 /* ——— Inputs & Textarea ——— */
 .stTextArea textarea,
-.stSelectbox > div > div{
+.stSelectbox > div > div,
+.stSelectSlider {                       /* slider handle */
     background:var(--secondary-background-color);
     border:1px solid #d2d2d7;
     border-radius:8px;
     font-size:15px;
-    color:var(--text-color)!important;   /* readable text */
+    color:var(--text-color)!important;
 }
 .stTextArea textarea:focus,
 input:focus,
 select:focus,
 textarea:focus{
-    border-color:#8e8e93!important;     /* neutral grey */
-    box-shadow:none!important;          /* remove red glow */
+    border-color:#8e8e93!important;
+    box-shadow:none!important;
     outline:none!important;
 }
 
@@ -68,18 +78,12 @@ textarea:focus{
     background:#1d1d1f;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:15px;font-weight:500;min-height:40px;
 }
 .stButton button:hover,.stDownloadButton button:hover{opacity:.85;}
-
-/* ——— Responsive tweaks ——— */
-@media(max-width:768px){
-  .hero-title{font-size:40px;}
-  .hero-subtitle{font-size:18px;}
-}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# ──────────────────────────────────────  HELPERS  ────────────────────────────────────────────
+# ─────────────────────────  HELPERS  ────────────────────────────
 def count_syllables(word: str) -> int:
     vowels = "aeiouy"
     word = word.lower()
@@ -157,7 +161,41 @@ def history_pdf(records):
     buf.seek(0)
     return buf.read()
 
-# ─────────────────────────────────────────── UI ──────────────────────────────────────────────
+# ─────────────────────────  SESSION DEFAULTS  ─────────────────────────
+st.session_state.setdefault("adapted", "")
+st.session_state.setdefault("questions", "")
+st.session_state.setdefault("history", [])
+
+# Student profile management
+if "profiles" not in st.session_state:
+    st.session_state.profiles = []          # list of dicts
+    st.session_state.selected_profile = None
+
+
+def save_profiles():
+    """Persist profiles to a tiny JSON file in ~/.readright_profiles.json."""
+    try:
+        home = os.path.expanduser("~")
+        path = os.path.join(home, ".readright_profiles.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(st.session_state.profiles, f, indent=2)
+    except Exception:
+        pass
+
+
+def load_profiles():
+    try:
+        home = os.path.expanduser("~")
+        path = os.path.join(home, ".readright_profiles.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                st.session_state.profiles = json.load(f)
+    except Exception:
+        pass
+
+load_profiles()
+
+# ─────────────────────────  TOP OF PAGE  ─────────────────────────
 st.markdown(
     """
 <div style="text-align:center;padding:3rem 0 2rem 0;">
@@ -168,41 +206,72 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ---- Session state defaults ----
-st.session_state.setdefault("adapted", "")
-st.session_state.setdefault("questions", "")
-st.session_state.setdefault("history", [])
-
-# ---- Sidebar ----
+# ─────────────────────────  SIDEBAR  ─────────────────────────
 with st.sidebar:
-    st.header("Configuration")
+    st.header("Grade Level")
+
     GRADES = [
         "Kindergarten", "1st Grade", "2nd Grade", "3rd Grade", "4th Grade",
         "5th Grade", "6th Grade", "7th Grade", "8th Grade",
         "9th Grade", "10th Grade", "11th Grade", "12th Grade",
     ]
-    tgt_grade = st.selectbox("Target grade level", GRADES, index=2)
-
-    st.header("AI Settings")
-    model_options = {
-    "Advanced": "gpt-4o-mini",
-    "Balanced": "gpt-4o",
-    "Fast": "gpt-3.5-turbo"
-                    }
-    model_label = st.selectbox("Model", list(model_options.keys()), index=0)
-    model = model_options[model_label]
-
+    tgt_grade = st.select_slider("Target grade level", options=GRADES, value="2nd Grade", key="tgt_grade_slider")
 
     st.header("Accessibility Options")
-    simplify = st.checkbox("Simplify vocabulary", True)
-    define   = st.checkbox("Add in‑text definitions", True)
-    short_p  = st.checkbox("Short paragraphs", True)
-    breaks   = st.checkbox("Add visual breaks", False)
+    define   = st.checkbox("Add in‑text definitions", True, key="opt_define")
+    short_p  = st.checkbox("Short paragraphs", True, key="opt_shortp")
+    breaks   = st.checkbox("Add visual breaks", False, key="opt_breaks")
 
-    st.header("Output Options")
-    make_qs  = st.checkbox("Generate comprehension questions", True)
+    # ───────── Student profiles ─────────
+    st.header("Student Profiles")
 
-# ---- Tabs ----
+    profile_names = [p["name"] for p in st.session_state.profiles]
+    sel = st.selectbox(
+        "Choose profile",
+        options=["— None —"] + profile_names + ["➕  Add new profile"],
+        key="profile_select",
+    )
+
+    if sel and sel in profile_names:  # load profile
+        prof = next(p for p in st.session_state.profiles if p["name"] == sel)
+        # update widgets (avoid triggering loops by using session_state directly)
+        st.session_state.tgt_grade_slider = prof["grade"]
+        st.session_state.opt_define = prof["define"]
+        st.session_state.opt_shortp = prof["short_p"]
+        st.session_state.opt_breaks = prof["breaks"]
+        st.session_state.selected_profile = sel
+
+    elif sel == "➕  Add new profile":
+        with st.popover("New student profile", use_container_width=True):
+            st.markdown("### Create profile")
+            name = st.text_input("Student name")
+            p_grade = st.select_slider("Grade level", options=GRADES, value="2nd Grade")
+            p_define = st.checkbox("Add in‑text definitions", True)
+            p_short  = st.checkbox("Short paragraphs", True)
+            p_breaks = st.checkbox("Add visual breaks", False)
+            if st.button("Save profile"):
+                if name.strip():
+                    # overwrite if duplicate
+                    new_prof = {
+                        "name": name.strip(),
+                        "grade": p_grade,
+                        "define": p_define,
+                        "short_p": p_short,
+                        "breaks": p_breaks,
+                    }
+                    st.session_state.profiles = [
+                        p for p in st.session_state.profiles if p["name"] != name.strip()
+                    ] + [new_prof]
+                    save_profiles()
+                    st.success(f"Profile '{name}' saved.")
+                    st.experimental_rerun()
+                else:
+                    st.error("Name cannot be empty.")
+
+        # reset selectbox after closing popover
+        st.session_state.profile_select = "— None —"
+
+# ─────────────────────────  TABS  ─────────────────────────
 tab_adapt, tab_metrics, tab_hist = st.tabs(["Adapt Text", "Analytics", "History"])
 
 # ===========  ADAPT TAB  ===========
@@ -223,6 +292,7 @@ with tab_adapt:
     if adapt_btn and text_in.strip():
         with st.spinner(f"Adapting text for {tgt_grade} …"):
             rules = guide(tgt_grade)
+            # Build prompt
             sys_prompt = f"""
 You are an expert special‑education content specialist.
 
@@ -235,10 +305,9 @@ GUIDELINES
  • Concepts: {rules[3]}
 
 ACCOMMODATIONS
- {'• Simplify vocabulary'            if simplify else ''}
  {'• Add definitions in parentheses' if define   else ''}
  {'• Short paragraphs (2‑3 sent.)'   if short_p  else ''}
- {'• Visual breaks between ideas'     if breaks   else ''}
+ {'• Visual breaks between ideas'    if breaks   else ''}
  • Clear topic sentences, transitions
  • Active voice; literal language
 
@@ -257,7 +326,7 @@ OUTPUT
             ]
             try:
                 res = client.chat.completions.create(
-                    model=model,
+                    model=MODEL,
                     temperature=0.3,
                     messages=msgs,
                     max_tokens=2000,
@@ -267,22 +336,24 @@ OUTPUT
                 raise err
             st.session_state.adapted = res.choices[0].message.content.strip()
 
+            # Optional comprehension questions
+            make_qs = True  # always generate; remove checkbox from UI
             if make_qs:
                 q_msgs = [
                     {"role": "system", "content": "Write clear comprehension questions for the given grade."},
                     {"role": "user", "content": f"Create 6 questions for {tgt_grade} students based on this text:\n\n{st.session_state.adapted}"},
                 ]
-                q_res = client.chat.completions.create(model=model, temperature=0.3, messages=q_msgs)
+                q_res = client.chat.completions.create(model=MODEL, temperature=0.3, messages=q_msgs)
                 st.session_state.questions = q_res.choices[0].message.content.strip()
 
-            # history preview
+            # Save to history (FULL text now)
             hist = st.session_state.history
             hist.append(
                 {
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "grade": tgt_grade,
-                    "original": (text_in[:100] + "...") if len(text_in) > 100 else text_in,
-                    "adapted": (st.session_state.adapted[:100] + "...") if len(st.session_state.adapted) > 100 else st.session_state.adapted,
+                    "original": text_in,
+                    "adapted": st.session_state.adapted,
                 }
             )
             st.success("Adaptation complete.")
@@ -306,15 +377,15 @@ OUTPUT
             unsafe_allow_html=True,
         )
 
-        if make_qs and st.session_state.questions:
+        if st.session_state.questions:
             st.markdown("#### Comprehension questions")
             st.markdown(st.session_state.questions)
 
-        # downloads
+        # ---- Downloads ----
         st.markdown("---")
         pack = f"""GENERATED {datetime.now():%Y-%m-%d %H:%M}
 GRADE {tgt_grade}
-MODEL {model}
+MODEL {MODEL}
 
 ORIGINAL
 --------
@@ -355,11 +426,23 @@ with tab_metrics:
         a = readability(st.session_state.adapted)
         if o and a:
             cols = st.columns(4)
-            cols[0].markdown(f"""<div class="metric-card"><div class="metric-value">{o['word_count']}→{a['word_count']}</div><div class="metric-label">Words</div></div>""", unsafe_allow_html=True)
-            cols[1].markdown(f"""<div class="metric-card"><div class="metric-value">{o['avg_sentence_length']}→{a['avg_sentence_length']}</div><div class="metric-label">Avg sent length</div></div>""", unsafe_allow_html=True)
-            cols[2].markdown(f"""<div class="metric-card"><div class="metric-value">{o['reading_ease']}→{a['reading_ease']}</div><div class="metric-label">Flesch ease</div></div>""", unsafe_allow_html=True)
+            cols[0].markdown(
+                f"""<div class="metric-card"><div class="metric-value">{o['word_count']}→{a['word_count']}</div><div class="metric-label">Words</div></div>""",
+                unsafe_allow_html=True,
+            )
+            cols[1].markdown(
+                f"""<div class="metric-card"><div class="metric-value">{o['avg_sentence_length']}→{a['avg_sentence_length']}</div><div class="metric-label">Avg sent length</div></div>""",
+                unsafe_allow_html=True,
+            )
+            cols[2].markdown(
+                f"""<div class="metric-card"><div class="metric-value">{o['reading_ease']}→{a['reading_ease']}</div><div class="metric-label">Flesch ease</div></div>""",
+                unsafe_allow_html=True,
+            )
             drop = round((1 - a['word_count'] / o['word_count']) * 100)
-            cols[3].markdown(f"""<div class="metric-card"><div class="metric-value">{drop}%</div><div class="metric-label">Complexity ↓</div></div>""", unsafe_allow_html=True)
+            cols[3].markdown(
+                f"""<div class="metric-card"><div class="metric-value">{drop}%</div><div class="metric-label">Complexity ↓</div></div>""",
+                unsafe_allow_html=True,
+            )
     else:
         st.write("Adapt a text first to view analytics.")
 
@@ -378,14 +461,17 @@ with tab_hist:
             )
         else:
             st.caption("Install reportlab to enable PDF export.")
+
         for rec in reversed(hist[-10:]):
             with st.expander(f"{rec['timestamp']} — {rec['grade']}"):
-                st.write("**Original preview:**", rec["original"])
-                st.write("**Adapted preview:**", rec["adapted"])
+                st.write("**Original:**")
+                st.write(rec["original"])
+                st.write("**Adapted:**")
+                st.write(rec["adapted"])
     else:
         st.write("No history yet – run an adaptation first.")
 
-# ──────────────────────────────────────  FOOTER  ─────────────────────────────────────────────
+# ─────────────────────────  FOOTER  ─────────────────────────
 st.markdown("---")
 st.markdown(
     "<div style='text-align:center;font-size:13px;color:#86868b;'>Built with love • Powered by OpenAI</div>",
