@@ -222,54 +222,58 @@ with st.sidebar:
     short_p  = st.checkbox("Short paragraphs", True, key="opt_shortp")
     breaks   = st.checkbox("Add visual breaks", False, key="opt_breaks")
 
-    # ───────── Student profiles ─────────
-    st.header("Student Profiles")
+  # ─────────── Student profiles ───────────
+# If the previous run asked for a reset, do it *before* the widget is drawn
+if st.session_state.get("_reset_profile_select"):
+    st.session_state.profile_select = "— None —"
+    del st.session_state["_reset_profile_select"]
 
-    profile_names = [p["name"] for p in st.session_state.profiles]
-    sel = st.selectbox(
-        "Choose profile",
-        options=["— None —"] + profile_names + ["➕  Add new profile"],
-        key="profile_select",
-    )
+st.header("Student Profiles")
 
-    if sel and sel in profile_names:  # load profile
-        prof = next(p for p in st.session_state.profiles if p["name"] == sel)
-        # update widgets (avoid triggering loops by using session_state directly)
-        st.session_state.tgt_grade_slider = prof["grade"]
-        st.session_state.opt_define = prof["define"]
-        st.session_state.opt_shortp = prof["short_p"]
-        st.session_state.opt_breaks = prof["breaks"]
-        st.session_state.selected_profile = sel
+profile_names = [p["name"] for p in st.session_state.profiles]
+sel = st.selectbox(
+    "Choose profile",
+    options=["— None —"] + profile_names + ["➕  Add new profile"],
+    key="profile_select",
+)
 
-    elif sel == "➕  Add new profile":
-        with st.popover("New student profile", use_container_width=True):
-            st.markdown("### Create profile")
-            name = st.text_input("Student name")
-            p_grade = st.select_slider("Grade level", options=GRADES, value="2nd Grade")
-            p_define = st.checkbox("Add in‑text definitions", True)
-            p_short  = st.checkbox("Short paragraphs", True)
-            p_breaks = st.checkbox("Add visual breaks", False)
-            if st.button("Save profile"):
-                if name.strip():
-                    # overwrite if duplicate
-                    new_prof = {
-                        "name": name.strip(),
-                        "grade": p_grade,
-                        "define": p_define,
-                        "short_p": p_short,
-                        "breaks": p_breaks,
-                    }
-                    st.session_state.profiles = [
-                        p for p in st.session_state.profiles if p["name"] != name.strip()
-                    ] + [new_prof]
-                    save_profiles()
-                    st.success(f"Profile '{name}' saved.")
-                    st.experimental_rerun()
-                else:
-                    st.error("Name cannot be empty.")
+if sel and sel in profile_names:                      # load existing profile
+    prof = next(p for p in st.session_state.profiles if p["name"] == sel)
+    st.session_state.tgt_grade_slider = prof["grade"]
+    st.session_state.opt_define      = prof["define"]
+    st.session_state.opt_shortp      = prof["short_p"]
+    st.session_state.opt_breaks      = prof["breaks"]
+    st.session_state.selected_profile = sel
 
-        # reset selectbox after closing popover
-        st.session_state.profile_select = "— None —"
+elif sel == "➕  Add new profile":                     # create new one
+    with st.popover("New student profile", use_container_width=True):
+        st.markdown("### Create profile")
+        name     = st.text_input("Student name")
+        p_grade  = st.select_slider("Grade level", options=GRADES, value="2nd Grade")
+        p_define = st.checkbox("Add in‑text definitions", True)
+        p_short  = st.checkbox("Short paragraphs", True)
+        p_breaks = st.checkbox("Add visual breaks", False)
+
+        if st.button("Save profile"):
+            if name.strip():
+                new_prof = {
+                    "name":   name.strip(),
+                    "grade":  p_grade,
+                    "define": p_define,
+                    "short_p": p_short,
+                    "breaks": p_breaks,
+                }
+                st.session_state.profiles = [
+                    p for p in st.session_state.profiles if p["name"] != new_prof["name"]
+                ] + [new_prof]
+                save_profiles()
+                st.success(f"Profile '{name}' saved.")
+
+                # signal that the selectbox should revert to “None”
+                st.session_state["_reset_profile_select"] = True
+                st.experimental_rerun()
+            else:
+                st.error("Name cannot be empty.")
 
 # ─────────────────────────  TABS  ─────────────────────────
 tab_adapt, tab_metrics, tab_hist = st.tabs(["Adapt Text", "Analytics", "History"])
