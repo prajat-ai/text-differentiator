@@ -1,14 +1,15 @@
 # readright_app.py
 """
 ReadRight – adaptive text differentiation for diverse learners.
-Updated 2025‑08‑06: profile‑load bug fixed.
+Stable version – 2025-08-06.
 """
 
 import os
 import re
+import json
 from io import BytesIO
 from datetime import datetime
-import json
+
 import streamlit as st
 from openai import OpenAI
 
@@ -82,14 +83,14 @@ def readability(text: str):
 
 
 _GUIDES = {
-    "Kindergarten": ("3–5 words", "Basic sight words", "Simple S‑V", "Concrete objects"),
+    "Kindergarten": ("3–5 words", "Basic sight words", "Simple S-V", "Concrete objects"),
     "1st Grade": ("5–8 words", "Sight + simple descript.", "Basic conj.", "Familiar experiences"),
     "2nd Grade": ("8–12 words", "Growing sight list", "and/but compounds", "Comparisons, sequence"),
     "3rd Grade": ("10–15 words", "Academic vocab", "Dep. clauses", "Abstract ideas + examples"),
     "4th Grade": ("12–18 words", "Subject terms", "Varied structs", "Cause–effect, inference"),
     "5th Grade": ("15–20 words", "Figurative language", "Sophisticated variety", "Abstract, critical"),
 }
-def guide(grade):  # default for 6‑12
+def guide(grade):  # default for 6-12
     return _GUIDES.get(
         grade,
         ("Varies", "Grade academic vocab", "Full range", "Abstract / complex"),
@@ -132,101 +133,72 @@ st.session_state.setdefault("adapted", "")
 st.session_state.setdefault("questions", "")
 st.session_state.setdefault("history", [])
 
-# Widget keys & defaults
+# Widget defaults
 st.session_state.setdefault("tgt_grade_slider", "2nd Grade")
 st.session_state.setdefault("opt_define", True)
 st.session_state.setdefault("opt_shortp", True)
 st.session_state.setdefault("opt_breaks", False)
 
-# Student profiles
+# ─────────────────────────  PROFILE PERSISTENCE  ─────────────────────────
 if "profiles" not in st.session_state:
     st.session_state.profiles = []
+
+def _profiles_path() -> str:
+    home = os.path.expanduser("~")
+    return os.path.join(home, ".readright_profiles.json")
+
 def save_profiles():
     try:
-        home = os.path.expanduser("~")
-        with open(os.path.join(home, ".readright_profiles.json"), "w", encoding="utf-8") as f:
+        with open(_profiles_path(), "w", encoding="utf-8") as f:
             json.dump(st.session_state.profiles, f, indent=2)
     except Exception:
         pass
+
 def load_profiles():
     try:
-        home = os.path.expanduser("~")
-        path = os.path.join(home, ".readright_profiles.json")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
+        if os.path.exists(_profiles_path()):
+            with open(_profiles_path(), "r", encoding="utf-8") as f:
                 st.session_state.profiles = json.load(f)
     except Exception:
         pass
+
 load_profiles()
 
-# ─────────────────────────  HANDLE PENDING PROFILE APPLY / RESET ─────────────────────────
-# These flags are set during the previous run and must be processed before widgets are drawn
-if st.session_state.get("_apply_profile"):            # apply grade + options first
-    prof = st.session_state["_apply_profile"]
-    st.session_state.tgt_grade_slider = prof["grade"]
-    st.session_state.opt_define      = prof["define"]
-    st.session_state.opt_shortp      = prof["short_p"]
-    st.session_state.opt_breaks      = prof["breaks"]
-    del st.session_state["_apply_profile"]
+# ─────────────────────────  SIDEBAR & PROFILE CALLBACK  ─────────────────────────
+GRADES = [
+    "Kindergarten", "1st Grade", "2nd Grade", "3rd Grade", "4th Grade",
+    "5th Grade", "6th Grade", "7th Grade", "8th Grade",
+    "9th Grade", "10th Grade", "11th Grade", "12th Grade",
+]
 
-if st.session_state.get("_reset_profile_select"):     # reset the selectbox value
-    st.session_state.profile_select = "— None —"
-    del st.session_state["_reset_profile_select"]
+def apply_selected_profile():
+    """Widget callback: copy chosen profile’s settings into session_state before next run."""
+    sel = st.session_state.profile_select
+    profile_dict = next((p for p in st.session_state.profiles if p["name"] == sel), None)
+    if profile_dict:
+        st.session_state.tgt_grade_slider = profile_dict["grade"]
+        st.session_state.opt_define      = profile_dict["define"]
+        st.session_state.opt_shortp      = profile_dict["short_p"]
+        st.session_state.opt_breaks      = profile_dict["breaks"]
 
-# ─────────────────────────  TOP OF PAGE  ─────────────────────────
-st.markdown(
-    """
-<div style="text-align:center;padding:3rem 0 2rem 0;">
-  <h1 class="hero-title" style="margin:0;font-weight:700;">Welcome to ReadRight</h1>
-  <p class="hero-subtitle" style="margin:0;">Transform instructional materials into accessible texts for every learner.</p>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-# ─────────────────────────  SIDEBAR  ─────────────────────────
 with st.sidebar:
-    st.header("Grade Level")
-
-    GRADES = [
-        "Kindergarten", "1st Grade", "2nd Grade", "3rd Grade", "4th Grade",
-        "5th Grade", "6th Grade", "7th Grade", "8th Grade",
-        "9th Grade", "10th Grade", "11th Grade", "12th Grade",
-    ]
-    tgt_grade = st.select_slider(
-        "Target grade level",
-        options=GRADES,
-        value=st.session_state.tgt_grade_slider,
-        key="tgt_grade_slider",
-    )
-
-    st.header("Accessibility Options")
-    define  = st.checkbox("Add in‑text definitions", value=st.session_state.opt_define, key="opt_define")
-    short_p = st.checkbox("Short paragraphs",        value=st.session_state.opt_shortp, key="opt_shortp")
-    breaks  = st.checkbox("Add visual breaks",       value=st.session_state.opt_breaks, key="opt_breaks")
-
-    # ───────── Student profiles ─────────
+    # ─── Student profiles (first so callback fires *before* grade/option widgets) ───
     st.header("Student Profiles")
 
     profile_names = [p["name"] for p in st.session_state.profiles]
     sel = st.selectbox(
-        "Choose profile",
-        options=["— None —"] + profile_names + ["➕  Add new profile"],
+        "Choose a profile",
+        ["— None —"] + profile_names + ["➕  Add new profile"],
         key="profile_select",
+        on_change=apply_selected_profile,
     )
 
-    if sel and sel in profile_names:                      # load profile
-        prof = next(p for p in st.session_state.profiles if p["name"] == sel)
-        st.session_state["_apply_profile"] = prof
-        st.session_state["_reset_profile_select"] = True  # optional: return UI to "None"
-        st.experimental_rerun()
-
-    elif sel == "➕  Add new profile":                     # create new one
+    if sel == "➕  Add new profile":
         with st.popover("New student profile", use_container_width=True):
             st.markdown("### Create profile")
             name     = st.text_input("Student name")
             p_grade  = st.select_slider("Grade level", options=GRADES, value="2nd Grade")
-            p_define = st.checkbox("Add in‑text definitions", True)
+            p_define = st.checkbox("Add in-text definitions", True)
             p_short  = st.checkbox("Short paragraphs", True)
             p_breaks = st.checkbox("Add visual breaks", False)
 
@@ -244,10 +216,35 @@ with st.sidebar:
                     ] + [new_prof]
                     save_profiles()
                     st.success(f"Profile '{name}' saved.")
-                    st.session_state["_reset_profile_select"] = True
-                    st.experimental_rerun()
+                    # Automatically select the new profile (triggers callback next run)
+                    st.session_state.profile_select = new_prof["name"]
                 else:
                     st.error("Name cannot be empty.")
+
+    # ─── Grade & accessibility widgets ───
+    st.header("Grade Level")
+    tgt_grade = st.select_slider(
+        "Target grade level",
+        options=GRADES,
+        value=st.session_state.tgt_grade_slider,
+        key="tgt_grade_slider",
+    )
+
+    st.header("Accessibility Options")
+    define   = st.checkbox("Add in-text definitions", value=st.session_state.opt_define, key="opt_define")
+    short_p  = st.checkbox("Short paragraphs",        value=st.session_state.opt_shortp, key="opt_shortp")
+    breaks   = st.checkbox("Add visual breaks",       value=st.session_state.opt_breaks, key="opt_breaks")
+
+# ─────────────────────────  TOP OF PAGE  ─────────────────────────
+st.markdown(
+    """
+<div style="text-align:center;padding:3rem 0 2rem 0;">
+  <h1 class="hero-title" style="margin:0;font-weight:700;">Welcome to ReadRight</h1>
+  <p class="hero-subtitle" style="margin:0;">Transform instructional materials into accessible texts for every learner.</p>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # ─────────────────────────  TABS  ─────────────────────────
 tab_adapt, tab_metrics, tab_hist = st.tabs(["Adapt Text", "Analytics", "History"])
@@ -271,7 +268,7 @@ with tab_adapt:
         with st.spinner(f"Adapting text for {tgt_grade} …"):
             rules = guide(tgt_grade)
             sys_prompt = f"""
-You are an expert special‑education content specialist.
+You are an expert special-education content specialist.
 
 TARGET: {tgt_grade} students.
 
@@ -283,7 +280,7 @@ GUIDELINES
 
 ACCOMMODATIONS
  {'• Add definitions in parentheses' if define   else ''}
- {'• Short paragraphs (2‑3 sent.)'   if short_p else ''}
+ {'• Short paragraphs (2-3 sent.)'   if short_p else ''}
  {'• Visual breaks between ideas'    if breaks  else ''}
  • Clear topic sentences, transitions
  • Active voice; literal language
