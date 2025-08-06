@@ -1,7 +1,7 @@
 # readright_app.py
 """
 ReadRight – adaptive text differentiation for diverse learners.
-Stable version – 2025-08-06.
+Stable version – 2025-08-06 (profile-creation bug fixed).
 """
 
 import os
@@ -90,7 +90,7 @@ _GUIDES = {
     "4th Grade": ("12–18 words", "Subject terms", "Varied structs", "Cause–effect, inference"),
     "5th Grade": ("15–20 words", "Figurative language", "Sophisticated variety", "Abstract, critical"),
 }
-def guide(grade):  # default for 6-12
+def guide(grade):
     return _GUIDES.get(
         grade,
         ("Varies", "Grade academic vocab", "Full range", "Abstract / complex"),
@@ -161,8 +161,13 @@ def load_profiles():
                 st.session_state.profiles = json.load(f)
     except Exception:
         pass
-
 load_profiles()
+
+# ─────────────────────────  HANDLE PENDING PROFILE SELECTION ─────────────────────────
+# If the previous run asked us to switch the selectbox's value, do it *before* widgets are created
+if "_next_profile_select" in st.session_state:
+    st.session_state.profile_select = st.session_state["_next_profile_select"]
+    del st.session_state["_next_profile_select"]
 
 # ─────────────────────────  SIDEBAR & PROFILE CALLBACK  ─────────────────────────
 GRADES = [
@@ -172,19 +177,17 @@ GRADES = [
 ]
 
 def apply_selected_profile():
-    """Widget callback: copy chosen profile’s settings into session_state before next run."""
     sel = st.session_state.profile_select
-    profile_dict = next((p for p in st.session_state.profiles if p["name"] == sel), None)
-    if profile_dict:
-        st.session_state.tgt_grade_slider = profile_dict["grade"]
-        st.session_state.opt_define      = profile_dict["define"]
-        st.session_state.opt_shortp      = profile_dict["short_p"]
-        st.session_state.opt_breaks      = profile_dict["breaks"]
+    prof = next((p for p in st.session_state.profiles if p["name"] == sel), None)
+    if prof:
+        st.session_state.tgt_grade_slider = prof["grade"]
+        st.session_state.opt_define      = prof["define"]
+        st.session_state.opt_shortp      = prof["short_p"]
+        st.session_state.opt_breaks      = prof["breaks"]
 
 with st.sidebar:
-    # ─── Student profiles (first so callback fires *before* grade/option widgets) ───
+    # Student profiles (selectbox first so callback fires early)
     st.header("Student Profiles")
-
     profile_names = [p["name"] for p in st.session_state.profiles]
     sel = st.selectbox(
         "Choose a profile",
@@ -216,12 +219,13 @@ with st.sidebar:
                     ] + [new_prof]
                     save_profiles()
                     st.success(f"Profile '{name}' saved.")
-                    # Automatically select the new profile (triggers callback next run)
-                    st.session_state.profile_select = new_prof["name"]
+                    # ask next run to preselect this profile
+                    st.session_state["_next_profile_select"] = new_prof["name"]
+                    st.experimental_rerun()
                 else:
                     st.error("Name cannot be empty.")
 
-    # ─── Grade & accessibility widgets ───
+    # Grade & accessibility widgets
     st.header("Grade Level")
     tgt_grade = st.select_slider(
         "Target grade level",
@@ -318,7 +322,6 @@ OUTPUT
             q_res = client.chat.completions.create(model=MODEL, temperature=0.3, messages=q_msgs)
             st.session_state.questions = q_res.choices[0].message.content.strip()
 
-            # Save to history (full texts)
             st.session_state.history.append(
                 {
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
