@@ -1,7 +1,7 @@
 # readright_app.py
 """
 ReadRight – adaptive text differentiation for diverse learners.
-Revised 2025‑08‑06 per custom requirements.
+Updated 2025‑08‑06: profile‑load bug fixed.
 """
 
 import os
@@ -18,9 +18,7 @@ if not OPENAI_API_KEY:
     st.error("OPENAI_API_KEY not found. Set it in your environment or Streamlit secrets.")
     st.stop()
 
-# Default model; can be overridden with env var if needed
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 st.set_page_config(
@@ -33,50 +31,19 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-/* ——— Fonts & Base ——— */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-*{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;
-  box-sizing:border-box;}
-
-/* Light / dark automatic */
+*{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',Helvetica,Arial,sans-serif;box-sizing:border-box;}
 .stApp{color-scheme:light dark;}
-
-/* Hide Streamlit default chrome */
 #MainMenu,footer,.viewerBadge_link__1S137{display:none;}
-
-/* ——— Tabs ——— */
 .stTabs [data-baseweb="tab-list"]{gap:24px;border-bottom:none!important;}
 .stTabs [data-baseweb="tab"]{height:44px;background:transparent;border:none;font-size:17px;font-weight:500;padding-bottom:12px;}
 .stTabs [aria-selected="true"]{border-bottom:none!important;}
-
-/* ——— Inputs & Textarea ——— */
-.stTextArea textarea,
-.stSelectbox > div > div,
-.stSelectSlider {                       /* slider handle */
-    background:var(--secondary-background-color);
-    border:1px solid #d2d2d7;
-    border-radius:8px;
-    font-size:15px;
-    color:var(--text-color)!important;
-}
-.stTextArea textarea:focus,
-input:focus,
-select:focus,
-textarea:focus{
-    border-color:#8e8e93!important;
-    box-shadow:none!important;
-    outline:none!important;
-}
-
-/* ——— Metric cards ——— */
+.stTextArea textarea,.stSelectbox > div > div,.stSelectSlider{background:var(--secondary-background-color);border:1px solid #d2d2d7;border-radius:8px;font-size:15px;color:var(--text-color)!important;}
+.stTextArea textarea:focus,input:focus,select:focus,textarea:focus{border-color:#8e8e93!important;box-shadow:none!important;outline:none!important;}
 .metric-card{background:var(--background-color);border:1px solid #d2d2d7;border-radius:12px;padding:20px;text-align:center;}
 .metric-value{font-size:32px;font-weight:700;margin-bottom:4px;}
 .metric-label{font-size:13px;color:#86868b;font-weight:500;}
-
-/* ——— Buttons ——— */
-.stButton button,.stDownloadButton button{
-    background:#1d1d1f;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:15px;font-weight:500;min-height:40px;
-}
+.stButton button,.stDownloadButton button{background:#1d1d1f;color:#fff;border:none;border-radius:8px;padding:8px 20px;font-size:15px;font-weight:500;min-height:40px;}
 .stButton button:hover,.stDownloadButton button:hover{opacity:.85;}
 </style>
 """,
@@ -130,7 +97,6 @@ def guide(grade):  # default for 6‑12
 
 
 def history_pdf(records):
-    """Return PDF bytes or None if ReportLab unavailable."""
     try:
         from reportlab.lib.pagesizes import letter
         from reportlab.pdfgen import canvas
@@ -166,23 +132,22 @@ st.session_state.setdefault("adapted", "")
 st.session_state.setdefault("questions", "")
 st.session_state.setdefault("history", [])
 
-# Student profile management
+# Widget keys & defaults
+st.session_state.setdefault("tgt_grade_slider", "2nd Grade")
+st.session_state.setdefault("opt_define", True)
+st.session_state.setdefault("opt_shortp", True)
+st.session_state.setdefault("opt_breaks", False)
+
+# Student profiles
 if "profiles" not in st.session_state:
-    st.session_state.profiles = []          # list of dicts
-    st.session_state.selected_profile = None
-
-
+    st.session_state.profiles = []
 def save_profiles():
-    """Persist profiles to a tiny JSON file in ~/.readright_profiles.json."""
     try:
         home = os.path.expanduser("~")
-        path = os.path.join(home, ".readright_profiles.json")
-        with open(path, "w", encoding="utf-8") as f:
+        with open(os.path.join(home, ".readright_profiles.json"), "w", encoding="utf-8") as f:
             json.dump(st.session_state.profiles, f, indent=2)
     except Exception:
         pass
-
-
 def load_profiles():
     try:
         home = os.path.expanduser("~")
@@ -192,8 +157,21 @@ def load_profiles():
                 st.session_state.profiles = json.load(f)
     except Exception:
         pass
-
 load_profiles()
+
+# ─────────────────────────  HANDLE PENDING PROFILE APPLY / RESET ─────────────────────────
+# These flags are set during the previous run and must be processed before widgets are drawn
+if st.session_state.get("_apply_profile"):            # apply grade + options first
+    prof = st.session_state["_apply_profile"]
+    st.session_state.tgt_grade_slider = prof["grade"]
+    st.session_state.opt_define      = prof["define"]
+    st.session_state.opt_shortp      = prof["short_p"]
+    st.session_state.opt_breaks      = prof["breaks"]
+    del st.session_state["_apply_profile"]
+
+if st.session_state.get("_reset_profile_select"):     # reset the selectbox value
+    st.session_state.profile_select = "— None —"
+    del st.session_state["_reset_profile_select"]
 
 # ─────────────────────────  TOP OF PAGE  ─────────────────────────
 st.markdown(
@@ -215,65 +193,61 @@ with st.sidebar:
         "5th Grade", "6th Grade", "7th Grade", "8th Grade",
         "9th Grade", "10th Grade", "11th Grade", "12th Grade",
     ]
-    tgt_grade = st.select_slider("Target grade level", options=GRADES, value="2nd Grade", key="tgt_grade_slider")
+    tgt_grade = st.select_slider(
+        "Target grade level",
+        options=GRADES,
+        value=st.session_state.tgt_grade_slider,
+        key="tgt_grade_slider",
+    )
 
     st.header("Accessibility Options")
-    define   = st.checkbox("Add in‑text definitions", True, key="opt_define")
-    short_p  = st.checkbox("Short paragraphs", True, key="opt_shortp")
-    breaks   = st.checkbox("Add visual breaks", False, key="opt_breaks")
+    define  = st.checkbox("Add in‑text definitions", value=st.session_state.opt_define, key="opt_define")
+    short_p = st.checkbox("Short paragraphs",        value=st.session_state.opt_shortp, key="opt_shortp")
+    breaks  = st.checkbox("Add visual breaks",       value=st.session_state.opt_breaks, key="opt_breaks")
 
-  # ─────────── Student profiles ───────────
-# If the previous run asked for a reset, do it *before* the widget is drawn
-if st.session_state.get("_reset_profile_select"):
-    st.session_state.profile_select = "— None —"
-    del st.session_state["_reset_profile_select"]
+    # ───────── Student profiles ─────────
+    st.header("Student Profiles")
 
-st.header("Student Profiles")
+    profile_names = [p["name"] for p in st.session_state.profiles]
+    sel = st.selectbox(
+        "Choose profile",
+        options=["— None —"] + profile_names + ["➕  Add new profile"],
+        key="profile_select",
+    )
 
-profile_names = [p["name"] for p in st.session_state.profiles]
-sel = st.selectbox(
-    "Choose profile",
-    options=["— None —"] + profile_names + ["➕  Add new profile"],
-    key="profile_select",
-)
+    if sel and sel in profile_names:                      # load profile
+        prof = next(p for p in st.session_state.profiles if p["name"] == sel)
+        st.session_state["_apply_profile"] = prof
+        st.session_state["_reset_profile_select"] = True  # optional: return UI to "None"
+        st.experimental_rerun()
 
-if sel and sel in profile_names:                      # load existing profile
-    prof = next(p for p in st.session_state.profiles if p["name"] == sel)
-    st.session_state.tgt_grade_slider = prof["grade"]
-    st.session_state.opt_define      = prof["define"]
-    st.session_state.opt_shortp      = prof["short_p"]
-    st.session_state.opt_breaks      = prof["breaks"]
-    st.session_state.selected_profile = sel
+    elif sel == "➕  Add new profile":                     # create new one
+        with st.popover("New student profile", use_container_width=True):
+            st.markdown("### Create profile")
+            name     = st.text_input("Student name")
+            p_grade  = st.select_slider("Grade level", options=GRADES, value="2nd Grade")
+            p_define = st.checkbox("Add in‑text definitions", True)
+            p_short  = st.checkbox("Short paragraphs", True)
+            p_breaks = st.checkbox("Add visual breaks", False)
 
-elif sel == "➕  Add new profile":                     # create new one
-    with st.popover("New student profile", use_container_width=True):
-        st.markdown("### Create profile")
-        name     = st.text_input("Student name")
-        p_grade  = st.select_slider("Grade level", options=GRADES, value="2nd Grade")
-        p_define = st.checkbox("Add in‑text definitions", True)
-        p_short  = st.checkbox("Short paragraphs", True)
-        p_breaks = st.checkbox("Add visual breaks", False)
-
-        if st.button("Save profile"):
-            if name.strip():
-                new_prof = {
-                    "name":   name.strip(),
-                    "grade":  p_grade,
-                    "define": p_define,
-                    "short_p": p_short,
-                    "breaks": p_breaks,
-                }
-                st.session_state.profiles = [
-                    p for p in st.session_state.profiles if p["name"] != new_prof["name"]
-                ] + [new_prof]
-                save_profiles()
-                st.success(f"Profile '{name}' saved.")
-
-                # signal that the selectbox should revert to “None”
-                st.session_state["_reset_profile_select"] = True
-                st.experimental_rerun()
-            else:
-                st.error("Name cannot be empty.")
+            if st.button("Save profile"):
+                if name.strip():
+                    new_prof = {
+                        "name":   name.strip(),
+                        "grade":  p_grade,
+                        "define": p_define,
+                        "short_p": p_short,
+                        "breaks": p_breaks,
+                    }
+                    st.session_state.profiles = [
+                        p for p in st.session_state.profiles if p["name"] != new_prof["name"]
+                    ] + [new_prof]
+                    save_profiles()
+                    st.success(f"Profile '{name}' saved.")
+                    st.session_state["_reset_profile_select"] = True
+                    st.experimental_rerun()
+                else:
+                    st.error("Name cannot be empty.")
 
 # ─────────────────────────  TABS  ─────────────────────────
 tab_adapt, tab_metrics, tab_hist = st.tabs(["Adapt Text", "Analytics", "History"])
@@ -296,7 +270,6 @@ with tab_adapt:
     if adapt_btn and text_in.strip():
         with st.spinner(f"Adapting text for {tgt_grade} …"):
             rules = guide(tgt_grade)
-            # Build prompt
             sys_prompt = f"""
 You are an expert special‑education content specialist.
 
@@ -310,8 +283,8 @@ GUIDELINES
 
 ACCOMMODATIONS
  {'• Add definitions in parentheses' if define   else ''}
- {'• Short paragraphs (2‑3 sent.)'   if short_p  else ''}
- {'• Visual breaks between ideas'    if breaks   else ''}
+ {'• Short paragraphs (2‑3 sent.)'   if short_p else ''}
+ {'• Visual breaks between ideas'    if breaks  else ''}
  • Clear topic sentences, transitions
  • Active voice; literal language
 
@@ -340,19 +313,16 @@ OUTPUT
                 raise err
             st.session_state.adapted = res.choices[0].message.content.strip()
 
-            # Optional comprehension questions
-            make_qs = True  # always generate; remove checkbox from UI
-            if make_qs:
-                q_msgs = [
-                    {"role": "system", "content": "Write clear comprehension questions for the given grade."},
-                    {"role": "user", "content": f"Create 6 questions for {tgt_grade} students based on this text:\n\n{st.session_state.adapted}"},
-                ]
-                q_res = client.chat.completions.create(model=MODEL, temperature=0.3, messages=q_msgs)
-                st.session_state.questions = q_res.choices[0].message.content.strip()
+            # Generate comprehension questions
+            q_msgs = [
+                {"role": "system", "content": "Write clear comprehension questions for the given grade."},
+                {"role": "user", "content": f"Create 6 questions for {tgt_grade} students based on this text:\n\n{st.session_state.adapted}"},
+            ]
+            q_res = client.chat.completions.create(model=MODEL, temperature=0.3, messages=q_msgs)
+            st.session_state.questions = q_res.choices[0].message.content.strip()
 
-            # Save to history (FULL text now)
-            hist = st.session_state.history
-            hist.append(
+            # Save to history (full texts)
+            st.session_state.history.append(
                 {
                     "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "grade": tgt_grade,
@@ -453,9 +423,8 @@ with tab_metrics:
 # ===========  HISTORY TAB  ===========
 with tab_hist:
     st.subheader("Adaptation history")
-    hist = st.session_state.history
-    if hist:
-        pdf = history_pdf(hist)
+    if st.session_state.history:
+        pdf = history_pdf(st.session_state.history)
         if pdf:
             st.download_button(
                 "Download history (PDF)",
@@ -465,8 +434,7 @@ with tab_hist:
             )
         else:
             st.caption("Install reportlab to enable PDF export.")
-
-        for rec in reversed(hist[-10:]):
+        for rec in reversed(st.session_state.history[-10:]):
             with st.expander(f"{rec['timestamp']} — {rec['grade']}"):
                 st.write("**Original:**")
                 st.write(rec["original"])
